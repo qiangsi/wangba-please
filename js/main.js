@@ -160,6 +160,7 @@ function sceneClick(x, y) {
 function update() {
   if (scene === 'booth') {
     runTimers();
+    tutUpdate();
     if (B.event && B.event.type === 'fence') updateFence();
     const idle = !B.ent && !B.event && !B.closeup && !B.bday && !B.ending;
     if (idle && isEvent(nextItem()) && now > B.lastFinish + 1.6) startEvent(B.queue[B.idx++]);

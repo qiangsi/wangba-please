@@ -35,7 +35,7 @@ function startDay() {
     tray: { open: false, t: -9 }, presses: [], shake: -9,
     insp: { on: false, sel: [], banner: null, all: false },
     xray: { on: false, t: -9 }, printing: null, printQueue: [], effects: [],
-    ruleInst: null, rulePos: [228, 136], ruleOpened: false, speakerT: -9, fightT: -9,
+    ruleInst: null, rulePos: [232, 198], ruleOpened: false, speakerT: -9, fightT: -9,
     pay: 0, bonus: 0, bribe: 0, fines: 0, cites: 0, correct: 0, total: 0, flash: null, clock0: now,
     ending: false, event: null, closeup: null, bday: null, lastFinish: now, tensionSrc: null,
   };
@@ -538,6 +538,7 @@ function dragEnd(x, y) {
 // ———————————————————— 输入 ————————————————————
 
 function boothInput(x, y) {
+  if (tutClick(x, y)) return;
   if (B.bday) { if (now - B.bday.t0 > 1.0) endBday(); return; }
   if (B.closeup) { if (now - B.closeup.t0 > 1.2) closeupDone(); return; }
   if (B.event && B.event.type === 'fence') { if (y < 130) interceptAt(x, y); return; }
@@ -1025,6 +1026,7 @@ function drawTray() {
 
 function hintText() {
   if (B.flash && now < B.flash.t + 3.2) return B.flash.text;
+  if (tutActive()) return '';
   const e = B.ent, here = e && e.phase === 'here' && e.handed && !B.event, T = S.tut;
   if (S.day === 1) {
     if (!T.called) return '点左下角闪烁的喇叭，叫下一位';
@@ -1059,6 +1061,110 @@ function drawHint() {
   rect(x, y, x + w, y + 15, 'rgba(24,20,18,0.92)');
   outline(x, y, x + w, y + 15, K.CHEN);
   txt(x + 6, y + (size === 10 ? 3 : 4), s, size, 'rgb(160,220,200)');
+}
+
+// ———————————————————— 新手引导（第 1 天） ————————————————————
+
+const TUT_STEPS = [
+  { id: 'welcome', text: ['欢迎来到毛豆电竞网吧！本周绿盾严打，', '你的任务：别放一个未成年人进来。'] },
+  { id: 'call', text: ['点左下角闪烁的喇叭，叫下一位顾客进门'] },
+  { id: 'wait', text: ['顾客会先说话、再递证件——', '证件会堆在柜台左下角（小图标）'] },
+  { id: 'drag', text: ['按住柜台左下角的证件图标，', '拖到右边桌面上查看'] },
+  { id: 'rules', text: ['点右下角『公约』看今天的规则：', '第 1 天只有一条——未满 18 周岁拒绝'] },
+  { id: 'tray', text: ['点右侧桌沿的把手「<」，拉出盖章栏'] },
+  { id: 'stamp', text: ['把证件挪到印章正下方，按「拒绝」', '（Ta 出生 2008 年，未满 18）'] },
+  { id: 'return', text: ['最后把盖好章的证件拖回左边窗口', '还给旅客，Ta 就会离开——完成！'] },
+  { id: 'end', text: ['一天的流程就是这些！后面几天', '还会解锁『检查』『测谎』『X 光』。'] },
+];
+let TUT_BTNS = [];
+
+function tutActive() { return scene === 'booth' && B && S.day === 1 && !S.tut.tutDone; }
+function tutStep() { return TUT_STEPS[S.tut.tutStep || 0]; }
+function tutStepDone(step) {
+  switch (step.id) {
+    case 'call': return S.tut.called;
+    case 'wait': return !!(B.ent && B.ent.handed);
+    case 'drag': return S.tut.dragged;
+    case 'rules': return S.tut.rules;
+    case 'tray': return S.tut.tray;
+    case 'stamp': return S.tut.stamped;
+    case 'return': return S.tut.returned;
+    default: return false;
+  }
+}
+function tutUpdate() {
+  if (!tutActive()) return;
+  let i = S.tut.tutStep || 0;
+  while (i > 0 && i < TUT_STEPS.length - 1 && tutStepDone(TUT_STEPS[i])) i++;
+  if (i !== (S.tut.tutStep || 0)) S.tut.tutStep = i;
+}
+function tutClick(x, y) {
+  if (!tutActive()) return false;
+  for (const [box, act] of TUT_BTNS) {
+    if (inBox(x, y, box)) {
+      SFX.play('click');
+      if (act === 'begin') S.tut.tutStep = 1;
+      else if (act === 'skip') { S.tut.tutDone = true; flash('已跳过引导：需要时看右下角『公约』和顶部提示条'); }
+      else if (act === 'finish') { S.tut.tutDone = true; flash('正式上班！绿盾办看你的表现。'); }
+      return true;
+    }
+  }
+  return false;
+}
+function tutBoxes() {
+  const id = tutStep().id;
+  if (id === 'call') return [[0, 280, 34, 314]];
+  if (id === 'drag') {
+    const d = B.docs.find((d) => d.owner === 'ent' && !d.big);
+    return d ? [[d.x - 4, d.y - 4, d.x + 22, d.y + 16]] : [];
+  }
+  if (id === 'rules') return [[524, 316, 566, 358]];
+  if (id === 'tray') { const tx = trayX(); return [[tx - 18, 200, tx + 2, 248]]; }
+  if (id === 'stamp') {
+    const tx = trayX();
+    const list = [[tx + 6, TRAY_Y0 + 4, tx + 78, TRAY_Y0 + 52], [tx + 86, TRAY_Y0 + 4, tx + 158, TRAY_Y0 + 52]];
+    const p = B.ent && primaryOf(B.ent);
+    if (p && p.big) list.push(docBox(p));
+    return list;
+  }
+  if (id === 'return') return [[4, 146, 218, 252]];
+  return [];
+}
+function drawTut() {
+  if (!tutActive()) return;
+  const step = tutStep(), i = S.tut.tutStep || 0;
+  TUT_BTNS = [];
+  // 目标高亮（双色脉冲）
+  if (step.id !== 'welcome' && step.id !== 'end') {
+    const blink = Math.floor(now * 2.5) % 2 === 0;
+    for (const b of tutBoxes()) {
+      outline(b[0] - 2, b[1] - 2, b[2] + 2, b[3] + 2, blink ? K.AMBER : K.WHITE, 1);
+      outline(b[0] - 4, b[1] - 4, b[2] + 4, b[3] + 4, blink ? K.WHITE : K.AMBER, 1);
+    }
+  }
+  // 面板
+  const big = step.id === 'welcome' || step.id === 'end';
+  const w = big ? 330 : 246;
+  const x0 = big ? 296 : 384, y0 = big ? 116 : 132;
+  const ph = big ? 30 + step.text.length * 14 + 34 : 26 + step.text.length * 14 + 8;
+  const x1 = x0 + w, y1 = y0 + ph;
+  rect(x0, y0, x1, y1, 'rgba(24,20,18,0.94)');
+  outline(x0, y0, x1, y1, K.AMBER);
+  txt(x0 + 9, y0 + 5, big ? (step.id === 'welcome' ? '新手引导' : '引导完成') : `新手引导 ${i}/${TUT_STEPS.length - 2}`, 8, K.GREY);
+  step.text.forEach((s, k) => txt(x0 + 9, y0 + 17 + k * 14, s, 10, K.WHITE));
+  if (big) {
+    const b1 = [x0 + 18, y1 - 26, x0 + 158, y1 - 8], b2 = [x0 + 172, y1 - 26, x0 + 312, y1 - 8];
+    rect(b1[0], b1[1], b1[2], b1[3], K.GREEN_D); outline(b1[0], b1[1], b1[2], b1[3], K.GREEN);
+    txt((b1[0] + b1[2]) >> 1, b1[1] + 4, step.id === 'welcome' ? '开始引导' : '开始上班', 10, K.WHITE, 'ma');
+    rect(b2[0], b2[1], b2[2], b2[3], 'rgb(50,44,40)'); outline(b2[0], b2[1], b2[2], b2[3], K.GREY_D);
+    txt((b2[0] + b2[2]) >> 1, b2[1] + 4, step.id === 'welcome' ? '自己探索' : '再看一遍', 10, K.GREY, 'ma');
+    TUT_BTNS.push([b1, step.id === 'welcome' ? 'begin' : 'finish']);
+    TUT_BTNS.push([b2, step.id === 'welcome' ? 'skip' : 'retry']);
+  } else {
+    const sk = [x1 - 36, y0 + 3, x1 - 5, y0 + 16];
+    txt(sk[0] + 4, sk[1] + 2, '跳过', 8, K.GREY);
+    TUT_BTNS.push([sk, 'skip']);
+  }
 }
 
 function button(box, glyph, label, active) {
@@ -1110,6 +1216,7 @@ function drawBooth() {
   drawButtons();
   drawEffects();
   drawHint();
+  drawTut();
 }
 
 function drawNeonSign() {
