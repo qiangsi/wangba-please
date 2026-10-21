@@ -39,6 +39,11 @@ function startDay() {
     pay: 0, bonus: 0, bribe: 0, fines: 0, cites: 0, correct: 0, total: 0, flash: null, clock0: now,
     ending: false, event: null, closeup: null, bday: null, lastFinish: now, tensionSrc: null,
   };
+  // Day 2 开局明示测谎玩法（一次性）
+  if (S.day === 2 && !S.tut.quizIntro) {
+    S.tut.quizIntro = true;
+    later(2.2, () => flash('今日新玩法「测谎」：先用『检查』找疑点，再按『测谎』对暗号——小孩忍不住接下半句，接了就露馅！'));
+  }
 }
 
 function later(dt, fn) { B.timers.push({ t: now + dt, fn }); }
@@ -337,7 +342,9 @@ function quiz() {
     steps.push(['E', pick(QUIZ_CONFUSED), { expr: 'neutral' }]);
     steps.push(['C', '……当我没问。']);
   }
-  runSteps(steps);
+  const dur = runSteps(steps);
+  if (kid) later(dur + 0.2, () => flash('露馅了！暗号接上了，Ta 是小孩——按「扭送」或盖「拒绝」都算对'));
+  else later(dur + 0.2, () => flash('暗号对不上：大概率是真大人——没别的矛盾就放行'));
 }
 
 // —— X 光 ——
@@ -1035,8 +1042,8 @@ function hintText() {
   if (S.day <= 5 && !B.ruleOpened) return '今天有新规：点右下角『公约』看看（标着 NEW）';
   if (S.day === 2) {
     if (!T.inspect) return '右下『?』检查模式：点两处矛盾的信息（如姓名和证号）';
-    if (!T.tell && !e.suspect && B.idx >= 3) return '证件都对得上？用『检查』点 Ta 说的话，找马脚';
-    if (!T.quiz && e.suspect && e.spec.quiz) return '有疑点了：按柜台上的『测谎』；露馅的按『扭送』';
+    if (!T.tell && !e.suspect && B.idx >= 3) return '证件都对得上？『检查』点点 Ta 说的话：小孩说话会露馅（提爸妈、作业、被接送）';
+    if (!T.quiz && e.suspect && e.spec.quiz) return '有疑点了！按柜台『测谎』对暗号——小孩会忍不住接下半句，接了就扭送/拒绝';
   }
   if (S.day === 3 && !T.payChecked && B.idx <= 2) { T.payChecked = true; return '新：支付凭证。可疑的付款/手机/账单，和公约 §4 一起点'; }
   if (S.day === 4 && !T.xray) return '新：右下『X光』扫描书包；检查模式下直接点可疑物品';
