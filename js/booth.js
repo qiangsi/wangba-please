@@ -278,13 +278,24 @@ function stamp(kind) {
   const cx = mx + 29, cy = my + 17;
   const target = [...B.docs].reverse().find((d) => d.big && inBox(cx, cy, [d.x, d.y, d.x + d.doc.w - 1, d.y + d.doc.h - 1]));
   if (target) {
-    later(0.05, () => target.marks.push({ kind, rx: mx - target.x, ry: my - target.y }));
+    // 一张证件只能有一个章：新章替换旧章（改判）
+    const old = target.marks.length ? target.marks[target.marks.length - 1].kind : null;
+    const kindName = kind === 'approve' ? '准予' : '拒绝';
+    later(0.05, () => { target.marks = [{ kind, rx: mx - target.x, ry: my - target.y }]; });
     S.tut.stamped = true;
+    if (old && old !== kind) {
+      const isPrim = B.ent && target.owner === 'ent' && target.key === B.ent.spec.primary;
+      flash(isPrim ? `改判：这张主证件以「${kindName}」为准` : `重新盖章：以「${kindName}」为准`);
+    }
     const e = B.ent;
-    if (e && target.owner === 'ent' && target.key === e.spec.primary && !e.decided) {
-      e.decided = kind;
-      if (e.spec.tension && kind === 'approve') SFX.play('fanfare');
-      if (e.spec.react && e.spec.react[kind]) runSteps(e.spec.react[kind], 0.4);
+    if (e && target.owner === 'ent' && target.key === e.spec.primary) {
+      if (!e.decided) {
+        e.decided = kind;
+        if (e.spec.tension && kind === 'approve') SFX.play('fanfare');
+        if (e.spec.react && e.spec.react[kind]) runSteps(e.spec.react[kind], 0.4);
+      } else if (e.decided !== kind) {
+        e.decided = kind; // 改判：更新判定，不重播反应
+      }
     }
   } else {
     flash('印章下面没有证件：把证件挪到印章正下方');
