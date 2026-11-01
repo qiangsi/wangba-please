@@ -665,14 +665,27 @@ function faceCanvas(key, mode) {
 }
 const FW = 72, FH = 84;
 
-// 证件照：缩小到 40×48（无平滑取整像素）
+// 证件照：直接从网格取头部区域（第 0~13 行）铺满 40×48，保证发型清晰不掉行
 const photoCache = new Map();
 function facePhoto(key) {
   let c = photoCache.get(key);
   if (c) return c;
   const [cv, g] = makeCanvas(40, 48);
-  g.imageSmoothingEnabled = false;
-  g.drawImage(faceCanvas(key, ''), 0, 0, FW, FH, 0, 0, 40, 48);
+  const rows = faceRows(key), pal = facePal(key);
+  const c0 = 1, c1 = 17, r1 = 14; // 取列 1~16、行 0~13（头部+肩口）
+  const cw = 40 / (c1 - c0), chh = 48 / r1;
+  for (let j = 0; j < r1; j++) {
+    const row = rows[j] || '';
+    for (let i = c0; i < c1; i++) {
+      const chr = row[i];
+      if (!chr || chr === '.' || chr === ' ') continue;
+      const col = chr === 'p' ? pal.p : (pal[chr] || pal.s);
+      g.fillStyle = rgb(col);
+      const x0 = Math.floor((i - c0) * cw), x1 = Math.ceil((i + 1 - c0) * cw);
+      const y0 = Math.floor(j * chh), y1 = Math.ceil((j + 1) * chh);
+      g.fillRect(x0, y0, x1 - x0, y1 - y0);
+    }
+  }
   photoCache.set(key, cv);
   return cv;
 }
