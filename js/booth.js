@@ -542,21 +542,27 @@ function dragEnd(x, y) {
   const e = B.ent;
   const bounce = () => { Object.assign(d, prev); if (!prev.big && d.slot) { d.x = d.slot[0]; d.y = d.slot[1]; } };
   if (!e || (e.phase !== 'here' && e.phase !== 'waiting')) { bounce(); return; }
-  if (d.key === e.spec.primary && !decisionOf(d)) {
-    bounce();
-    if (prev.big) flash('先在这本证件上盖章（右侧拉出盖章栏），再还给旅客');
+  // 一键归还：归还任意一本该顾客的证件，只要主证件已盖章，一次性收走全部证件
+  if (d.owner === 'ent') {
+    const prim = e.docs.find((o) => o.key === e.spec.primary);
+    if (prim && !decisionOf(prim)) {
+      bounce();
+      if (prev.big) flash('先在主证件上盖章（右侧拉出盖章栏），再还证件');
+      return;
+    }
+    if (!prev.big && d.key !== e.spec.primary) { bounce(); return; }
+    S.tut.returned = true;
+    if (prim) prim.returned = true;
+    d.returned = true;
+    B.docs = B.docs.filter((o) => o.owner !== 'ent');
+    SFX.play('paper');
+    checkLeave();
     return;
   }
   if (!prev.big) { bounce(); return; }
   B.docs = B.docs.filter((o) => o !== d);
   d.returned = true;
   SFX.play('paper');
-  if (d.key === e.spec.primary) {
-    S.tut.returned = true;
-    // 一键归还：主证件递回即自动回收该顾客其余证件，省去逐张拖回（移动端减负）
-    for (const o of B.docs) if (o.owner === 'ent') o.returned = true;
-    B.docs = B.docs.filter((o) => o.owner !== 'ent');
-  }
   checkLeave();
 }
 
