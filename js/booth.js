@@ -188,8 +188,12 @@ function judge(e, dec) {
   }
   if (spec.ok.includes(dec)) {
     B.correct++; S.stats.correct++;
-    B.pay += 5;
+    const reward = 5 + (dec === 'detain' && e.exposed ? 5 : 0);
+    B.pay += reward;
     if (dec === 'detain' && e.exposed) B.bonus += 5;
+    // 正反馈：判对也要有即时回响（此前只有判错弹红警告单）
+    SFX.play('coin');
+    B.effects.push({ type: 'float', t0: now, text: `+¥${reward}`, good: true, ent: B.ent });
     return;
   }
   S.stats.wrong++;
@@ -275,9 +279,14 @@ function stamp(kind) {
   SFX.play(kind === 'approve' ? 'stamp_app' : 'stamp_deny');
   B.shake = now + 0.05;
   const [mx, my] = MARK_XY[kind];
-  const cx = mx + 29, cy = my + 17;
-  const target = [...B.docs].reverse().find((d) => d.big && inBox(cx, cy, [d.x, d.y, d.x + d.doc.w - 1, d.y + d.doc.h - 1]));
+  // 就近吸附：取与印章区重叠、且属当前顾客（ent）的最上层证件——免去精确对齐
+  const zx0 = mx - 12, zy0 = my - 12, zx1 = mx + 59, zy1 = my + 43;
+  const target = [...B.docs].reverse().find((d) => d.big && d.owner === 'ent'
+    && zx0 <= d.x + d.doc.w - 1 && d.x <= zx1 && zy0 <= d.y + d.doc.h - 1 && d.y <= zy1);
   if (target) {
+    // 自动把证件挪到印章正下方（移动端友好：手指热区≈40px，吸附区放宽到 ±12）
+    target.x = Math.max(DESK[0], Math.min(W - target.doc.w, mx - 29));
+    target.y = Math.max(DESK[1], Math.min(H - target.doc.h, my - 17));
     // 一张证件只能有一个章：新章替换旧章（改判）
     const old = target.marks.length ? target.marks[target.marks.length - 1].kind : null;
     const kindName = kind === 'approve' ? '准予' : '拒绝';
@@ -298,7 +307,7 @@ function stamp(kind) {
       }
     }
   } else {
-    flash('印章下面没有证件：把证件挪到印章正下方');
+    flash('印章附近没有证件：把证件拖到印章旁边，按「准予」或「拒绝」');
   }
   later(0.5, () => setTray(false));
 }
@@ -542,7 +551,12 @@ function dragEnd(x, y) {
   B.docs = B.docs.filter((o) => o !== d);
   d.returned = true;
   SFX.play('paper');
-  if (d.key === e.spec.primary) S.tut.returned = true;
+  if (d.key === e.spec.primary) {
+    S.tut.returned = true;
+    // 一键归还：主证件递回即自动回收该顾客其余证件，省去逐张拖回（移动端减负）
+    for (const o of B.docs) if (o.owner === 'ent') o.returned = true;
+    B.docs = B.docs.filter((o) => o.owner !== 'ent');
+  }
   checkLeave();
 }
 
@@ -627,7 +641,7 @@ function rushPick(kind) {
   SFX.play(kind === 'approve' ? 'stamp_app' : 'stamp_deny');
   B.shake = now;
   const okKind = r.kid ? 'deny' : 'approve';
-  if (kind === okKind) { ev.hits++; B.pay += 2; } else ev.wrong++;
+  if (kind === okKind) { ev.hits++; B.pay += 2; SFX.play('coin'); } else ev.wrong++;
   B.ent.expr = kind === 'deny' ? 'shock' : 'smile';
   later(0.5, rushNext);
 }
@@ -1046,7 +1060,7 @@ function hintText() {
     if (!T.dragged && !onDesk) return '把柜台上的证件（左下小图标）拖到右边桌上';
     if (!T.rules) return '点右下角的『公约』，看今天的检查规则';
     if (!T.tray) return '点右侧的把手“<”，拉出盖章栏';
-    if (!T.stamped) return '把证件挪到印章正下方，按“准予”或“拒绝”';
+    if (!T.stamped) return '把证件放到印章附近，按「准予」或「拒绝」（自动吸附对齐）';
     if (!T.returned && e.decided) return '把盖好章的证件拖回左边窗口，还给旅客';
     if (!T.inspect && B.idx >= 3) return '可选：右下『?』检查模式，点两处信息找矛盾';
     return '';
@@ -1083,7 +1097,7 @@ const TUT_STEPS = [
   { id: 'drag', text: ['按住柜台左下角的证件图标，', '拖到右边桌面上查看'] },
   { id: 'rules', text: ['点右下角『公约』看今天的规则：', '第 1 天只有一条——未满 18 周岁拒绝'] },
   { id: 'tray', text: ['点右侧桌沿的把手「<」，拉出盖章栏'] },
-  { id: 'stamp', text: ['把证件挪到印章正下方，按「拒绝」', '（Ta 出生 2008 年，未满 18）'] },
+  { id: 'stamp', text: ['把证件放到印章附近，按「拒绝」', '（会自动吸附对齐 · Ta 出生 2008 年，未满 18）'] },
   { id: 'return', text: ['最后把盖好章的证件拖回左边窗口', '还给旅客，Ta 就会离开——完成！'] },
   { id: 'end', text: ['一天的流程就是这些！后面几天', '还会解锁『检查』『测谎』『X 光』。'] },
 ];
@@ -1197,6 +1211,17 @@ function drawButtons() {
 function drawEffects() {
   B.effects = B.effects.filter((fx) => fx.ent === B.ent && now < fx.t0 + 4);
   for (const fx of B.effects) {
+    if (fx.type === 'float') {
+      const lt = now - fx.t0;
+      if (lt > 1.1) continue;
+      const a = Math.max(0, 1 - seg(lt, 0.7, 1.1));
+      const y = 178 - Math.round(lt * 30);
+      G.save();
+      G.globalAlpha = a;
+      bigText(WIN[0] + 96, y, fx.text, 12, 2, fx.good ? K.GREEN : K.RED_L, K.INK, 'ma');
+      G.restore();
+      continue;
+    }
     if (fx.type !== 'pile') continue;
     const lt = now - fx.t0, n = 37, step = 1.6 / n;
     const k = Math.min(n, Math.floor(lt / step) + 1);
